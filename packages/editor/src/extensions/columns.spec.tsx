@@ -1,4 +1,5 @@
 import { Editor, type JSONContent } from '@tiptap/core';
+import { type ResolvedPos, Schema } from '@tiptap/pm/model';
 import { render } from 'react-email';
 import { DEFAULT_STYLES } from '../utils/default-styles';
 import {
@@ -195,28 +196,33 @@ describe('Column Variants', () => {
   });
 
   it('reflects column spacing in editor HTML without inventing a default gap', () => {
-    type RenderHTMLFn = NonNullable<typeof TwoColumns.config.renderHTML>;
-    const renderHTML = TwoColumns.config.renderHTML as
-      | OmitThisParameter<RenderHTMLFn>
-      | undefined;
+    const node = new Schema({
+      nodes: { doc: { content: 'text*' }, text: {} },
+    }).nodes.doc.create();
+    const renderHTMLBound = TwoColumns.config.renderHTML;
+    if (!renderHTMLBound) {
+      throw new Error('expected TwoColumns.config.renderHTML to be defined');
+    }
+    const renderHTML: OmitThisParameter<typeof renderHTMLBound> =
+      renderHTMLBound;
+    const isAttrTuple = (
+      spec: unknown,
+    ): spec is readonly [string, Record<string, unknown>, ...unknown[]] =>
+      Array.isArray(spec) &&
+      typeof spec[0] === 'string' &&
+      typeof spec[1] === 'object' &&
+      spec[1] !== null &&
+      !Array.isArray(spec[1]);
 
-    const defaultHtml = renderHTML?.({
-      HTMLAttributes: {},
-    } as unknown as Parameters<RenderHTMLFn>[0]) as [
-      string,
-      Record<string, unknown>,
-      number,
-    ];
+    const defaultHtml = renderHTML({ node, HTMLAttributes: {} });
+    if (!isAttrTuple(defaultHtml)) throw new Error('expected attr tuple');
     expect(defaultHtml[1]).not.toHaveProperty('style');
 
-    const spacedHtml = renderHTML?.({
+    const spacedHtml = renderHTML({
+      node,
       HTMLAttributes: { cellspacing: '12', style: 'padding: 10px;' },
-    } as unknown as Parameters<RenderHTMLFn>[0]) as [
-      string,
-      Record<string, unknown>,
-      number,
-    ];
-
+    });
+    if (!isAttrTuple(spacedHtml)) throw new Error('expected attr tuple');
     expect(spacedHtml[1]).toMatchObject({
       'data-type': 'two-columns',
       class: 'node-columns',
@@ -261,9 +267,7 @@ describe('Column Deletion', () => {
     });
   }
 
-  function findColDepth(
-    $from: typeof Editor.prototype.state.selection.$from,
-  ): number | undefined {
+  function findColDepth($from: ResolvedPos): number | undefined {
     for (let d = $from.depth; d >= 0; d--) {
       if ($from.node(d).type.name === 'columnsColumn') return d;
     }
